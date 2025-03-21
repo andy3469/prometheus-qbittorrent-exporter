@@ -31,13 +31,13 @@ class TestQbittorrentMetricsCollector(unittest.TestCase):
             {"name": "Torrent DOWNLOADING 2", "state": TorrentStates.DOWNLOADING},
             {"name": "Torrent UPLOADING 2", "state": TorrentStates.UPLOADING},
         ]
-        self.torrentsCategories = [
-            {"name": "Torrent Movies 1", "category": "Movies"},
-            {"name": "Torrent Music 1", "category": "Music"},
-            {"name": "Torrent Movies 2", "category": "Movies"},
-            {"name": "Torrent unknown", "category": ""},
-            {"name": "Torrent Music 2", "category": "Music"},
-            {"name": "Torrent Uncategorized 1", "category": "Uncategorized"},
+        self.torrentsMock = [
+            {"name": "Torrent Movies 1", "category": "Movies", "tags": ["tag1", "tag2"]},
+            {"name": "Torrent Music 1", "category": "Music", "tags": ["tag1"]},
+            {"name": "Torrent Movies 2", "category": "Movies", "tags": ["tag3"]},
+            {"name": "Torrent unknown", "category": "", "tags": []},
+            {"name": "Torrent Music 2", "category": "Music", "tags": ["tag2"]},
+            {"name": "Torrent Uncategorized 1", "category": "Uncategorized", "tags": []},
         ]
         self.collector = QbittorrentMetricsCollector(self.config)
 
@@ -116,6 +116,15 @@ class TestQbittorrentMetricsCollector(unittest.TestCase):
         categories = self.collector._fetch_categories()
         self.assertEqual(categories, {})
 
+    def test_fetch_tags(self):
+        # Mock the client.torrent_tags.tags attribute
+        self.collector.client.torrent_tags.tags = ["tag1", "tag2", "tag3"]
+
+        tags = self.collector._fetch_tags()
+        self.assertIsInstance(tags, list)
+        self.assertNotEqual(len(tags), 0)
+        self.assertEqual(tags, ["tag1", "tag2", "tag3"])
+
     def test_fetch_torrents_success(self):
         # Mock the return value of self.client.torrents.info()
         self.collector.client.torrents.info.return_value = [
@@ -173,7 +182,7 @@ class TestQbittorrentMetricsCollector(unittest.TestCase):
             {"name": "Torrent Movies 2", "category": "Movies"},
         ]
         result = self.collector._filter_torrents_by_category(
-            "Movies", self.torrentsCategories
+            "Movies", self.torrentsMock
         )
         self.assertEqual(result, expected_result)
 
@@ -182,14 +191,39 @@ class TestQbittorrentMetricsCollector(unittest.TestCase):
             {"name": "Torrent Uncategorized 1", "category": "Uncategorized"},
         ]
         result = self.collector._filter_torrents_by_category(
-            "Uncategorized", self.torrentsCategories
+            "Uncategorized", self.torrentsMock
         )
         self.assertEqual(result, expected_result)
 
         expected_result = []
         result = self.collector._filter_torrents_by_category(
-            "Books", self.torrentsCategories
+            "Books", self.torrentsMock
         )
+        self.assertEqual(result, expected_result)
+
+    def test_filter_torrents_by_tag(self):
+        expected_result = [
+            {"name": "Torrent Movies 1", "category": "Movies", "tags": ["tag1", "tag2"]},
+            {"name": "Torrent Music 2", "category": "Music", "tags": ["tag2"]},
+        ]
+        result = self.collector._filter_torrents_by_tag("tag2", self.torrentsMock)
+        self.assertEqual(result, expected_result)
+
+        expected_result = [
+            {"name": "Torrent Movies 1", "category": "Movies", "tags": ["tag1", "tag2"]},
+            {"name": "Torrent Music 1", "category": "Music", "tags": ["tag1"]},
+        ]
+        result = self.collector._filter_torrents_by_tag("tag1", self.torrentsMock)
+        self.assertEqual(result, expected_result)
+
+        expected_result = [
+            {"name": "Torrent Movies 2", "category": "Movies", "tags": ["tag3"]},
+        ]
+        result = self.collector._filter_torrents_by_tag("tag3", self.torrentsMock)
+        self.assertEqual(result, expected_result)
+
+        expected_result = []
+        result = self.collector._filter_torrents_by_tag("tag4", self.torrentsMock)
         self.assertEqual(result, expected_result)
 
     def test_construct_metric_with_valid_state_and_category(self):

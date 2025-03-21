@@ -216,6 +216,15 @@ class QbittorrentMetricsCollector:
             logger.error(f"Couldn't fetch categories: {e}")
             return {}
 
+    def _fetch_tags(self) -> list:
+        """Fetches all tags in use from qbittorrent."""
+        try:
+            tags = list(self.client.torrent_tags.tags)
+            return tags
+        except Exception as e:
+            logger.error(f"Couldn't fetch tags: {e}")
+            return {}
+
     def _fetch_torrents(self) -> list[dict]:
         """Fetches torrents from qbittorrent"""
         try:
@@ -235,13 +244,22 @@ class QbittorrentMetricsCollector:
             or (category == "Uncategorized" and torrent["category"] == "")
         ]
 
+    def _filter_torrents_by_tags(self, tag: str, torrents: list[dict]) -> list[dict]:
+        """Filters torrents by the given tag."""
+        return [
+            torrent
+            for torrent in torrents
+            if tag in torrent["tags"]
+            or (tag == "Untagged" and torrent["tags"] == "")
+        ]
+
     def _filter_torrents_by_state(
         self, state: TorrentStates, torrents: list[dict]
     ) -> list[dict]:
         """Filters torrents by the given state."""
         return [torrent for torrent in torrents if torrent["state"] == state.value]
 
-    def _construct_metric(self, state: str, category: str, count: int) -> Metric:
+    def _construct_metric(self, state: str, tag: str, category: str, count: int) -> Metric:
         """Constructs and returns a metric object with a torrent count and appropriate
         labels."""
         return Metric(
@@ -249,29 +267,34 @@ class QbittorrentMetricsCollector:
             value=count,
             labels={
                 "status": state,
+                "tag": tag,
                 "category": category,
                 "server": self.server,
             },
-            help_text=f"Number of torrents in status {state} under category {category}",
+            help_text=f"Number of torrents in status {state} under tag {tag} and category {category}",
         )
 
     def _get_qbittorrent_torrent_tags_metrics(self) -> list[Metric]:
         categories = self._fetch_categories()
+        tags = self._fetch_tags()
         torrents = self._fetch_torrents()
 
         metrics: list[Metric] = []
         categories["Uncategorized"] = {"name": "Uncategorized", "savePath": ""}
+        tags.append("Untagged")
 
-        for category in categories:
-            category_torrents = self._filter_torrents_by_category(category, torrents)
-            for state in TorrentStates:
-                state_torrents = self._filter_torrents_by_state(
-                    state, category_torrents
-                )
-                metric = self._construct_metric(
-                    state.value, category, len(state_torrents)
-                )
-                metrics.append(metric)
+        for tag in tags:
+            tag_torrents = self._filter_torrents_by_tags(tag, torrents)
+            for category in categories:
+                category_torrents = self._filter_torrents_by_category(category, tag_torrents)
+                for state in TorrentStates:
+                    state_torrents = self._filter_torrents_by_state(
+                        state, category_torrents
+                    )
+                    metric = self._construct_metric(
+                        state.value, tag, category, len(state_torrents)
+                    )
+                    metrics.append(metric)
 
         return metrics
 
