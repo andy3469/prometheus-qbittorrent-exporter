@@ -105,6 +105,7 @@ class QbittorrentMetricsCollector:
                     labels={
                         "name": torrent["name"],
                         "category": torrent["category"],
+                        "tags": torrent["tags"],
                         "server": self.server,
                     },
                     help_text="Size of the torrent",
@@ -117,9 +118,23 @@ class QbittorrentMetricsCollector:
                     labels={
                         "name": torrent["name"],
                         "category": torrent["category"],
+                        "tags": torrent["tags"],
                         "server": self.server,
                     },
                     help_text="Downloaded data for the torrent",
+                )
+            )
+            metrics.append(
+                Metric(
+                    name=f"{self.config['metrics_prefix']}_torrent_uploaded",
+                    value=torrent["uploaded"],
+                    labels={
+                        "name": torrent["name"],
+                        "category": torrent["category"],
+                        "tags": torrent["tags"],
+                        "server": self.server,
+                    },
+                    help_text="Uploaded data for the torrent",
                 )
             )
 
@@ -249,8 +264,7 @@ class QbittorrentMetricsCollector:
         return [
             torrent
             for torrent in torrents
-            if tag in torrent["tags"]
-            or (tag == "Untagged" and torrent["tags"] == "")
+            if tag in torrent["tags"] or (tag == "Untagged" and torrent["tags"] == "")
         ]
 
     def _filter_torrents_by_state(
@@ -259,7 +273,9 @@ class QbittorrentMetricsCollector:
         """Filters torrents by the given state."""
         return [torrent for torrent in torrents if torrent["state"] == state.value]
 
-    def _construct_metric(self, state: str, tag: str, category: str, count: int) -> Metric:
+    def _construct_metric(
+        self, state: str, tag: str, category: str, count: int
+    ) -> Metric:
         """Constructs and returns a metric object with a torrent count and appropriate
         labels."""
         return Metric(
@@ -283,10 +299,40 @@ class QbittorrentMetricsCollector:
         categories["Uncategorized"] = {"name": "Uncategorized", "savePath": ""}
         tags.append("Untagged")
 
+        # Dictionnaires pour stocker les totaux
+        category_totals = {
+            cat: {"dl": 0, "ul": 0, "dlspeed": 0, "upspeed": 0} for cat in categories
+        }
+        tag_totals = {
+            tag: {"dl": 0, "ul": 0, "dlspeed": 0, "upspeed": 0}
+            for tag in tags
+            if tag != "cross-seed"
+        }
+
         for tag in tags:
+            if tag == "cross-seed":
+                continue
             tag_torrents = self._filter_torrents_by_tags(tag, torrents)
+
+            # Calculer les totaux par tag
+            for torrent in tag_torrents:
+                tag_totals[tag]["dl"] += torrent.get("downloaded", 0)
+                tag_totals[tag]["ul"] += torrent.get("uploaded", 0)
+                tag_totals[tag]["dlspeed"] += torrent.get("dlspeed", 0)
+                tag_totals[tag]["upspeed"] += torrent.get("upspeed", 0)
+
             for category in categories:
-                category_torrents = self._filter_torrents_by_category(category, tag_torrents)
+                category_torrents = self._filter_torrents_by_category(
+                    category, tag_torrents
+                )
+
+                # Calculer les totaux par catégorie
+                for torrent in category_torrents:
+                    category_totals[category]["dl"] += torrent.get("downloaded", 0)
+                    category_totals[category]["ul"] += torrent.get("uploaded", 0)
+                    category_totals[category]["dlspeed"] += torrent.get("dlspeed", 0)
+                    category_totals[category]["upspeed"] += torrent.get("upspeed", 0)
+
                 for state in TorrentStates:
                     state_torrents = self._filter_torrents_by_state(
                         state, category_torrents
@@ -295,6 +341,84 @@ class QbittorrentMetricsCollector:
                         state.value, tag, category, len(state_torrents)
                     )
                     metrics.append(metric)
+
+        # Ajouter les métriques de totaux par catégorie
+        for category, totals in category_totals.items():
+            metrics.append(
+                Metric(
+                    name=f"{self.config['metrics_prefix']}_category_downloaded_bytes_total",
+                    value=totals["dl"],
+                    labels={"category": category, "server": self.server},
+                    help_text="Total bytes downloaded for torrents in this category",
+                    metric_type=MetricType.COUNTER,
+                )
+            )
+            metrics.append(
+                Metric(
+                    name=f"{self.config['metrics_prefix']}_category_uploaded_bytes_total",
+                    value=totals["ul"],
+                    labels={"category": category, "server": self.server},
+                    help_text="Total bytes uploaded for torrents in this category",
+                    metric_type=MetricType.COUNTER,
+                )
+            )
+            metrics.append(
+                Metric(
+                    name=f"{self.config['metrics_prefix']}_category_download_speed_total",
+                    value=totals["dlspeed"],
+                    labels={"category": category, "server": self.server},
+                    help_text="Total download speed for torrents in this category",
+                    metric_type=MetricType.COUNTER,
+                )
+            )
+            metrics.append(
+                Metric(
+                    name=f"{self.config['metrics_prefix']}_category_upload_speed_total",
+                    value=totals["upspeed"],
+                    labels={"category": category, "server": self.server},
+                    help_text="Total upload speed for torrents in this category",
+                    metric_type=MetricType.COUNTER,
+                )
+            )
+
+        # Ajouter les métriques de totaux par tag
+        for tag, totals in tag_totals.items():
+            metrics.append(
+                Metric(
+                    name=f"{self.config['metrics_prefix']}_tag_downloaded_bytes_total",
+                    value=totals["dl"],
+                    labels={"tag": tag, "server": self.server},
+                    help_text="Total bytes downloaded for torrents with this tag",
+                    metric_type=MetricType.COUNTER,
+                )
+            )
+            metrics.append(
+                Metric(
+                    name=f"{self.config['metrics_prefix']}_tag_uploaded_bytes_total",
+                    value=totals["ul"],
+                    labels={"tag": tag, "server": self.server},
+                    help_text="Total bytes uploaded for torrents with this tag",
+                    metric_type=MetricType.COUNTER,
+                )
+            )
+            metrics.append(
+                Metric(
+                    name=f"{self.config['metrics_prefix']}_tag_download_speed_total",
+                    value=totals["dlspeed"],
+                    labels={"tag": tag, "server": self.server},
+                    help_text="Total download speed for torrents with this tag",
+                    metric_type=MetricType.COUNTER,
+                )
+            )
+            metrics.append(
+                Metric(
+                    name=f"{self.config['metrics_prefix']}_tag_upload_speed_total",
+                    value=totals["upspeed"],
+                    labels={"tag": tag, "server": self.server},
+                    help_text="Total upload speed for torrents with this tag",
+                    metric_type=MetricType.COUNTER,
+                )
+            )
 
         return metrics
 

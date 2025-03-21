@@ -32,12 +32,20 @@ class TestQbittorrentMetricsCollector(unittest.TestCase):
             {"name": "Torrent UPLOADING 2", "state": TorrentStates.UPLOADING},
         ]
         self.torrentsMock = [
-            {"name": "Torrent Movies 1", "category": "Movies", "tags": ["tag1", "tag2"]},
+            {
+                "name": "Torrent Movies 1",
+                "category": "Movies",
+                "tags": ["tag1", "tag2"],
+            },
             {"name": "Torrent Music 1", "category": "Music", "tags": ["tag1"]},
             {"name": "Torrent Movies 2", "category": "Movies", "tags": ["tag3"]},
             {"name": "Torrent unknown", "category": "", "tags": []},
             {"name": "Torrent Music 2", "category": "Music", "tags": ["tag2"]},
-            {"name": "Torrent Uncategorized 1", "category": "Uncategorized", "tags": []},
+            {
+                "name": "Torrent Uncategorized 1",
+                "category": "Uncategorized",
+                "tags": [],
+            },
         ]
         self.collector = QbittorrentMetricsCollector(self.config)
 
@@ -196,21 +204,27 @@ class TestQbittorrentMetricsCollector(unittest.TestCase):
         self.assertEqual(result, expected_result)
 
         expected_result = []
-        result = self.collector._filter_torrents_by_category(
-            "Books", self.torrentsMock
-        )
+        result = self.collector._filter_torrents_by_category("Books", self.torrentsMock)
         self.assertEqual(result, expected_result)
 
     def test_filter_torrents_by_tag(self):
         expected_result = [
-            {"name": "Torrent Movies 1", "category": "Movies", "tags": ["tag1", "tag2"]},
+            {
+                "name": "Torrent Movies 1",
+                "category": "Movies",
+                "tags": ["tag1", "tag2"],
+            },
             {"name": "Torrent Music 2", "category": "Music", "tags": ["tag2"]},
         ]
         result = self.collector._filter_torrents_by_tag("tag2", self.torrentsMock)
         self.assertEqual(result, expected_result)
 
         expected_result = [
-            {"name": "Torrent Movies 1", "category": "Movies", "tags": ["tag1", "tag2"]},
+            {
+                "name": "Torrent Movies 1",
+                "category": "Movies",
+                "tags": ["tag1", "tag2"],
+            },
             {"name": "Torrent Music 1", "category": "Music", "tags": ["tag1"]},
         ]
         result = self.collector._filter_torrents_by_tag("tag1", self.torrentsMock)
